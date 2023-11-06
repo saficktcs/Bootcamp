@@ -1,62 +1,48 @@
-provider "aws" {
-  region = var.aws_region
-}
+pipeline {
+    agent any
+    
+    environment {
+        SSH_CREDENTIALS = credentials('APKAVDYSQ72RJ4WSIAOU') 
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'f322580e-fb5f-44a3-8f87-14ba94faf33e', url: 'ssh://git-codecommit.us-east-1.amazonaws.com/v1/repos/Bootcamp23']])
+            }
+        }
+    
+    
+        stage('Creating Terraform Config') {
+            steps {
+                sh 'python3 sandy.py'
+            }
+        }
+        
+        stage('Initializing Terraform') {
+            steps {
+                sh 'terraform init -migrate-state'
+            }
+        }
 
-resource "aws_vpc" "main" {
-  cidr_block = "172.16.0.0/16"
-  instance_tenancy = "default"
-  tags = {
-    Name = "main"
-  }
-}
+        stage('Terraform Apply') {
+            steps {
+                sh 'terraform apply -auto-approve'
+            }
+        }
 
-#Create security group with firewall rules
-resource "aws_security_group" "jenkins-sg-2022" {
-  name        = var.security_group
-  description = "security group for Ec2 instance"
+        stage('Extract Terraform Output') {
+            steps {
+                script {
+                    def instanceIP = sh(script: "terraform output instance_ip", returnStdout: true).trim()
+                    def instanceName = sh(script: "terraform output instance_name", returnStdout: true).trim()
 
-  ingress {
-    from_port   = 8080
-    to_port     = 8080
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+                    echo "Instance IP: $instanceIP"
+                    echo "Instance Name: $instanceName"
 
- ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
- # outbound from jenkis server
-  egress {
-    from_port   = 0
-    to_port     = 65535
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags= {
-    Name = var.security_group
-  }
-}
-
-resource "aws_instance" "myFirstInstance" {
-  ami           = var.ami_id
-  key_name = var.key_name
-  instance_type = var.instance_type
-  vpc_security_group_ids = [aws_security_group.jenkins-sg-2022.id]
-  tags= {
-    Name = var.tag_name
-  }
-}
-
-# Create Elastic IP address
-resource "aws_eip" "myFirstInstance" {
-  vpc      = true
-  instance = aws_instance.myFirstInstance.id
-tags= {
-    Name = "my_elastic_ip"
-  }
+                    // Verwende die Variablen für spätere Schritte in der Pipeline
+                }
+            }
+        }
+    }
 }
